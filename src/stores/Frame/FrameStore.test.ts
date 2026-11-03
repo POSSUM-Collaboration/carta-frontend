@@ -1378,3 +1378,61 @@ describe("FrameStore WCS header cards", () => {
         expect(cards.every(card => /^[A-Z0-9_-][A-Z0-9_ -]{7}=/.test(card))).toBe(true);
     });
 });
+
+describe("FrameStore extra (pinned) axes", () => {
+    const extraAxes: CARTA.AxisInfo.$Properties[] = [
+        {number: 1, ctype: "RA---SIN", cunit: "deg", size: 2, role: CARTA.AxisRole.AxisX},
+        {number: 2, ctype: "DEC--SIN", cunit: "deg", size: 2, role: CARTA.AxisRole.AxisY},
+        {number: 3, ctype: "FREQ", cunit: "Hz", size: 3, role: CARTA.AxisRole.AxisZ},
+        {number: 4, ctype: "STOKES", cunit: "", size: 2, role: CARTA.AxisRole.AxisStokes},
+        {number: 5, ctype: "TIME", cunit: "s", size: 5, role: CARTA.AxisRole.AxisExtra, worldValues: [0, 0.5, 1, 1.5, 2]},
+        {number: 6, ctype: "", cunit: "", size: 4, role: CARTA.AxisRole.AxisExtra}
+    ];
+    const ndFrameInfo = {...STOKES_CUBEFRAME_INFO, fileInfoExtended: {...STOKES_CUBEFRAME_INFO.fileInfoExtended, dimensions: 6, axes: extraAxes}} as FrameInfo;
+
+    test("lists only the extra axes, with labels and world values", () => {
+        const frame = new FrameStore(ndFrameInfo);
+        expect(frame.hasExtraAxes).toBe(true);
+        expect(frame.extraAxes.map(axis => axis.number)).toEqual([5, 6]);
+        expect(frame.extraAxisIndices).toEqual([0, 0]);
+        expect(frame.requiredExtraAxisIndices).toEqual([0, 0]);
+        expect(frame.getExtraAxisLabel(0)).toBe("TIME");
+        expect(frame.getExtraAxisLabel(1)).toBe("Axis 6");
+        expect(frame.getExtraAxisValueString(0, 3)).toBe("1.5 s");
+        expect(frame.getExtraAxisValueString(1, 2)).toBe("2");
+    });
+
+    test("a 4D cube has no extra axes", () => {
+        const frame = new FrameStore(STOKES_CUBEFRAME_INFO);
+        expect(frame.hasExtraAxes).toBe(false);
+        expect(frame.extraAxes).toEqual([]);
+        expect(frame.isExtraAxisUpdateRequired).toBe(false);
+    });
+
+    test("setting an index clamps, flags an update, and leaves other axes alone", () => {
+        const frame = new FrameStore(ndFrameInfo);
+        runInAction(() => frame.setExtraAxisIndex(0, 3));
+        expect(frame.requiredExtraAxisIndices).toEqual([3, 0]);
+        expect(frame.isExtraAxisUpdateRequired).toBe(true);
+
+        runInAction(() => frame.setExtraAxisIndex(1, 99));
+        expect(frame.requiredExtraAxisIndices).toEqual([3, 3]);
+        runInAction(() => frame.setExtraAxisIndex(1, -4));
+        expect(frame.requiredExtraAxisIndices).toEqual([3, 0]);
+
+        runInAction(() => (frame.extraAxisIndices = [3, 0]));
+        expect(frame.isExtraAxisUpdateRequired).toBe(false);
+    });
+
+    test("incrementing wraps or clamps", () => {
+        const frame = new FrameStore(ndFrameInfo);
+        runInAction(() => frame.incrementExtraAxisIndex(0, -1));
+        expect(frame.requiredExtraAxisIndices[0]).toBe(4);
+        runInAction(() => frame.incrementExtraAxisIndex(0, 1));
+        expect(frame.requiredExtraAxisIndices[0]).toBe(0);
+        runInAction(() => frame.incrementExtraAxisIndex(0, -1, false));
+        expect(frame.requiredExtraAxisIndices[0]).toBe(0);
+        runInAction(() => frame.incrementExtraAxisIndex(1, 10, false));
+        expect(frame.requiredExtraAxisIndices[1]).toBe(3);
+    });
+});

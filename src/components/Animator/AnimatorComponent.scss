@@ -142,6 +142,17 @@
                 margin-bottom: 20px;
             }
 
+            &.extra-axis-slider {
+                .extra-axis-label {
+                    flex: 1 1 135px;
+                    padding-left: 26px; // align with the radio labels of the other sliders
+                    font-size: small;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+            }
+
             &.range-slider {
                 position: relative;
                 height: 30px;

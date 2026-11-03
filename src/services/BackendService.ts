@@ -517,11 +517,12 @@ export class BackendService {
         requiredTiles: CARTA.AddRequiredTiles.$Properties,
         isChannelMapEnabled?: boolean,
         _channelRange?: CARTA.IntBounds.$Properties | undefined,
-        currentRange?: CARTA.IntBounds.$Properties
+        currentRange?: CARTA.IntBounds.$Properties,
+        extraAxisIndices?: number[]
     ): boolean {
         if (this.connectionStatus === ConnectionStatus.ACTIVE) {
             const channelRange: CARTA.IntBounds.$Properties | null = _channelRange || null;
-            const message = CARTA.SetImageChannels.create({fileId, channel, stokes, requiredTiles, channelMapEnabled: isChannelMapEnabled, channelRange, currentRange});
+            const message = CARTA.SetImageChannels.create({fileId, channel, stokes, requiredTiles, channelMapEnabled: isChannelMapEnabled, channelRange, currentRange, extraAxisIndices: extraAxisIndices ?? []});
             this.logEvent(CARTA.EventType.SET_IMAGE_CHANNELS, this.eventCounter, message, false);
             if (this.sendEvent(CARTA.EventType.SET_IMAGE_CHANNELS, CARTA.SetImageChannels.encode(message).finish())) {
                 return true;

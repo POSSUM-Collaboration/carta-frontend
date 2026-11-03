@@ -259,7 +259,7 @@ export class AnimatorComponent extends React.Component<WidgetProps> {
         const numTimeSeriesElements = timeSeriesElements.length;
         const shouldAddTimeSeriesSliderSpacing = !shouldHideSliders && this.width < 750 && numTimeSeriesElements > 1;
 
-        let channelSlider, channelRangeSlider, stokesSlider, imageSlider, timeSeriesSlider;
+        let channelSlider, channelRangeSlider, stokesSlider, imageSlider, timeSeriesSlider, extraAxisSliders;
         // Image Control
         const imageIndex = appStore.activeImageIndex;
         if (numImages > 1 && imageIndex !== -1) {
@@ -374,6 +374,34 @@ export class AnimatorComponent extends React.Component<WidgetProps> {
                     )}
                 </div>
             );
+        }
+
+        // Extra (pinned) axes beyond x, y, channel and polarization: one slider each, no playback
+        if (activeFrame?.hasExtraAxes) {
+            extraAxisSliders = activeFrame.extraAxes.map((axis, extraAxisIndex) => {
+                const size = Math.max(1, axis.size ?? 1);
+                const requiredIndex = activeFrame.requiredExtraAxisIndices[extraAxisIndex] ?? 0;
+                const {values: axisTick} = getDiscreteSliderTicks(size);
+                const onChange = (val: number) => activeFrame.setExtraAxisIndex(extraAxisIndex, val);
+                return (
+                    <div className={classNames("animator-slider", "extra-axis-slider", {"tiled-label": this.width < 750})} key={`extra-axis-${axis.number}`} data-testid={`animator-extra-axis-slider-${axis.number}`}>
+                        <div className="extra-axis-label">
+                            <Tooltip content={`Axis ${axis.number} of the file; the displayed plane is taken at this index`} position={Position.TOP}>
+                                <span>{activeFrame.getExtraAxisLabel(extraAxisIndex)}</span>
+                            </Tooltip>
+                        </div>
+                        {shouldHideSliders && <SafeNumericInput value={requiredIndex} min={0} max={size - 1} stepSize={1} onValueChange={onChange} fill={true} disabled={appStore.animatorStore.isAnimationActive} />}
+                        {!shouldHideSliders && (
+                            <React.Fragment>
+                                <Slider value={requiredIndex} min={0} max={size - 1} labelValues={axisTick} labelPrecision={0} showTrackFill={false} onChange={onChange} disabled={appStore.animatorStore.isAnimationActive || size < 2} />
+                                <div className="slider-info" data-testid={`animator-extra-axis-slider-info-${axis.number}`}>
+                                    <Pre>{activeFrame.getExtraAxisValueString(extraAxisIndex, requiredIndex)}</Pre>
+                                </div>
+                            </React.Fragment>
+                        )}
+                    </div>
+                );
+            });
         }
 
         // Time series control
@@ -568,6 +596,7 @@ export class AnimatorComponent extends React.Component<WidgetProps> {
                                     {channelSlider}
                                     {channelRangeSlider}
                                     {stokesSlider}
+                                    {extraAxisSliders}
                                     {timeSeriesSlider}
                                 </div>
                             )}

@@ -114,6 +114,7 @@ interface ChannelUpdate {
     frame: FrameStore;
     channel: number;
     stokes: number;
+    extraAxisIndices?: number[];
 }
 
 const IMPORT_REGION_BATCH_SIZE = 1000;
@@ -1934,6 +1935,10 @@ export class AppStore {
 
             frame.channel = update.channel;
             frame.stokes = update.stokes;
+            if (update.extraAxisIndices) {
+                frame.extraAxisIndices = update.extraAxisIndices.slice();
+            }
+            const extraAxisIndices = frame.hasExtraAxes ? frame.extraAxisIndices : undefined;
 
             if (this.channelMapStore.isChannelMapEnabled) {
                 this.tileService.updateChannelMapActiveChannel(frame.frameInfo.fileId, frame.channel, frame.stokes);
@@ -1942,9 +1947,9 @@ export class AppStore {
                 // If BUNIT = km/s, adopted compressionQuality is set to 32 regardless the preferences setup
                 const bunitVariant = ["km/s", "km s-1", "km s^-1", "km.s-1"];
                 const compressionQuality = frame.headerUnit && bunitVariant.includes(frame.headerUnit) ? Math.max(this.preferenceStore.imageCompressionQuality, 32) : this.preferenceStore.imageCompressionQuality;
-                this.tileService.requestTiles(tiles, frame.frameInfo.fileId, frame.channel, frame.stokes, midPointTileCoords, compressionQuality, true);
+                this.tileService.requestTiles(tiles, frame.frameInfo.fileId, frame.channel, frame.stokes, midPointTileCoords, compressionQuality, true, extraAxisIndices);
             } else {
-                this.tileService.updateHiddenFileChannels(frame.frameInfo.fileId, frame.channel, frame.stokes);
+                this.tileService.updateHiddenFileChannels(frame.frameInfo.fileId, frame.channel, frame.stokes, extraAxisIndices);
             }
         }
     };
@@ -1955,10 +1960,10 @@ export class AppStore {
         if (frame) {
             const updates: ChannelUpdate[] = [];
             // Calculate if new data is required for the active channel
-            const isChannelUpdateRequired = frame.requiredChannel !== frame.channel || frame.requiredStokes !== frame.stokes;
+            const isChannelUpdateRequired = frame.requiredChannel !== frame.channel || frame.requiredStokes !== frame.stokes || frame.isExtraAxisUpdateRequired;
             // Don't auto-update when animation is playing
             if (!this.animatorStore.isAnimationActive && isChannelUpdateRequired) {
-                updates.push({frame: frame, channel: frame.requiredChannel, stokes: frame.requiredStokes});
+                updates.push({frame: frame, channel: frame.requiredChannel, stokes: frame.requiredStokes, extraAxisIndices: frame.requiredExtraAxisIndices});
             }
 
             // Update any sibling channels
@@ -2220,11 +2225,11 @@ export class AppStore {
 
             for (const visibleFrame of this.imageViewConfigStore.visibleFrames) {
                 if (visibleFrame) {
-                    // Calculate if new data is required for the active channel
-                    const isChannelUpdateRequired = visibleFrame.requiredChannel !== visibleFrame?.channel || visibleFrame.requiredStokes !== visibleFrame.stokes;
+                    // Calculate if new data is required for the active channel (or plane of an extra axis)
+                    const isChannelUpdateRequired = visibleFrame.requiredChannel !== visibleFrame?.channel || visibleFrame.requiredStokes !== visibleFrame.stokes || visibleFrame.isExtraAxisUpdateRequired;
                     // Don't auto-update when animation is playing
                     if (!this.animatorStore.isAnimationActive && isChannelUpdateRequired) {
-                        updates.push({frame: visibleFrame, channel: visibleFrame.requiredChannel, stokes: visibleFrame.requiredStokes});
+                        updates.push({frame: visibleFrame, channel: visibleFrame.requiredChannel, stokes: visibleFrame.requiredStokes, extraAxisIndices: visibleFrame.requiredExtraAxisIndices});
                     }
 
                     // Update any sibling channels

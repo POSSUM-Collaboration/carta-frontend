@@ -203,6 +203,9 @@ export class FrameStore {
     @observable channel: number = 0;
     @observable requiredStokes: number = 0;
     @observable requiredChannel: number = 0;
+    // Current and required index of each extra (pinned) axis beyond x, y, z and Stokes, in the order of extraAxes
+    @observable extraAxisIndices: number[] = [];
+    @observable requiredExtraAxisIndices: number[] = [];
     @observable animationChannelRange: NumberRange;
     @observable currentFrameView: FrameView | null = null;
     @observable currentCompressionQuality: number = 100;
@@ -1503,6 +1506,8 @@ export class FrameStore {
             mip: 999
         };
         this.animationChannelRange = [0, frameInfo.fileInfoExtended.depth - 1];
+        this.extraAxisIndices = this.extraAxes.map(() => 0);
+        this.requiredExtraAxisIndices = this.extraAxes.map(() => 0);
 
         if (this.isPVImage) {
             const astFrameSet = this.initPVFrame();
@@ -3136,6 +3141,87 @@ export class FrameStore {
      * @param channel - The channel index to set.
      * @param isRecursive - Whether to update channels of spectrally matched frames.
      */
+    /**
+     * Axes beyond x, y, the depth axis and Stokes, as described by the backend. Each is pinned at an index
+     * (extraAxisIndices) when the image is rendered.
+     */
+    @computed get extraAxes(): CARTA.AxisInfo.$Properties[] {
+        return this.frameInfo?.fileInfoExtended?.axes?.filter(axis => axis.role === CARTA.AxisRole.AxisExtra) ?? [];
+    }
+
+    @computed get hasExtraAxes(): boolean {
+        return this.extraAxes.length > 0;
+    }
+
+    /**
+     * Label of an extra axis: its CTYPE, or its 1-based axis number when the header has none.
+     */
+    getExtraAxisLabel = (extraAxisIndex: number): string => {
+        const axis = this.extraAxes[extraAxisIndex];
+        if (!axis) {
+            return "";
+        }
+        const ctype = axis.ctype?.trim();
+        return ctype ? ctype : `Axis ${axis.number}`;
+    };
+
+    /**
+     * Formatted world value of an extra axis at the given pixel index, with its unit when known.
+     */
+    getExtraAxisValueString = (extraAxisIndex: number, index: number): string => {
+        const axis = this.extraAxes[extraAxisIndex];
+        if (!axis) {
+            return "";
+        }
+        const value = axis.worldValues?.[index];
+        if (value === undefined || value === null || !isFinite(value)) {
+            return `${index}`;
+        }
+        const unit = axis.cunit?.trim();
+        const formatted = Math.abs(value) >= 1e6 || (Math.abs(value) < 1e-3 && value !== 0) ? value.toExponential(4) : `${Number(value.toPrecision(7))}`;
+        return unit ? `${formatted} ${unit}` : formatted;
+    };
+
+    /**
+     * Sets the required index of one extra axis (the plane is re-rendered once the backend confirms the change).
+     */
+    @action setExtraAxisIndex = (extraAxisIndex: number, index: number) => {
+        const axis = this.extraAxes[extraAxisIndex];
+        if (!axis || this.requiredExtraAxisIndices.length !== this.extraAxes.length) {
+            return;
+        }
+        const size = Math.max(1, axis.size ?? 1);
+        const sanitized = clamp(Math.round(index), 0, size - 1);
+        if (this.requiredExtraAxisIndices[extraAxisIndex] === sanitized) {
+            return;
+        }
+        const indices = this.requiredExtraAxisIndices.slice();
+        indices[extraAxisIndex] = sanitized;
+        this.requiredExtraAxisIndices = indices;
+        this.channelSelectionToken = {};
+    };
+
+    @action incrementExtraAxisIndex = (extraAxisIndex: number, delta: number, shouldWrap: boolean = true) => {
+        const axis = this.extraAxes[extraAxisIndex];
+        if (!axis) {
+            return;
+        }
+        const size = Math.max(1, axis.size ?? 1);
+        let index = (this.requiredExtraAxisIndices[extraAxisIndex] ?? 0) + delta;
+        index = shouldWrap ? ((index % size) + size) % size : clamp(index, 0, size - 1);
+        this.setExtraAxisIndex(extraAxisIndex, index);
+    };
+
+    /**
+     * Whether the required extra axis indices differ from the ones the current tiles were rendered at.
+     */
+    @computed get isExtraAxisUpdateRequired(): boolean {
+        if (this.requiredExtraAxisIndices.length !== this.extraAxisIndices.length) {
+            return this.requiredExtraAxisIndices.length > 0;
+        }
+        return this.requiredExtraAxisIndices.some((value, i) => value !== this.extraAxisIndices[i]);
+    }
+
     @action setChannel = (channel: number, isRecursive: boolean = true) => {
         this.setChannels(channel, this.requiredStokes, isRecursive);
     };

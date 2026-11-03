@@ -69,7 +69,7 @@ export class TileService {
     private readonly cacheMapCompressedTiles: Map<number, LRUCache<bigint | undefined, CompressedTile>>;
     private readonly pendingRequests: Map<string | undefined, Map<number, boolean>>;
     private readonly pendingDecompressions: Map<string, Map<number, Map<number, boolean>>>;
-    private readonly channelMap: Map<number, {channel: number | null | undefined; stokes: number | null | undefined}>;
+    private readonly channelMap: Map<number, {channel: number | null | undefined; stokes: number | null | undefined; extraAxisIndices?: number[]}>;
     private readonly completedChannels: Map<string, boolean>;
     readonly tileStream: Subject<TileStreamDetails>;
     private cachedTiles: LRUCache<bigint, RasterTile>;
@@ -149,7 +149,7 @@ export class TileService {
         this.backendService = BackendService.Instance;
         this.gl = TileWebGLService.Instance.gl;
 
-        this.channelMap = new Map<number, {channel: number; stokes: number}>();
+        this.channelMap = new Map<number, {channel: number; stokes: number; extraAxisIndices?: number[]}>();
         this.pendingRequests = new Map<string, Map<number, boolean>>();
         this.cacheMapCompressedTiles = new Map<number, LRUCache<bigint, CompressedTile>>();
         this.pendingDecompressions = new Map<string, Map<number, Map<number, boolean>>>();
@@ -266,14 +266,20 @@ export class TileService {
         return newRequests;
     }
 
-    requestTiles(tiles: TileCoordinate[], fileId: number, channel: number, stokes: number, focusPoint: Point2D, compressionQuality: number, areChannelsChanged: boolean = false) {
+    requestTiles(tiles: TileCoordinate[], fileId: number, channel: number, stokes: number, focusPoint: Point2D, compressionQuality: number, areChannelsChanged: boolean = false, extraAxisIndices?: number[]) {
         const key = `${fileId}_${stokes}_${channel}`;
+
+        // A change of the index of any extra (pinned) axis is a change of plane, like a change of channel
+        const currentChannels = this.channelMap.get(fileId);
+        if (currentChannels && extraAxisIndices && !TileService.sameExtraAxisIndices(currentChannels.extraAxisIndices, extraAxisIndices)) {
+            areChannelsChanged = true;
+        }
 
         if (areChannelsChanged || !this.channelMap.has(fileId)) {
             this.pendingSynchronisedTiles.set(key, new Set(tiles.map(tile => tile.encode())));
             this.receivedSynchronisedTiles.delete(key);
             this.clearRequestQueue(fileId);
-            this.channelMap.set(fileId, {channel, stokes});
+            this.channelMap.set(fileId, {channel, stokes, extraAxisIndices});
             this.clearCompressedCache(fileId);
         }
 
@@ -291,7 +297,7 @@ export class TileService {
                 })
                 .map(tile => tile.encode());
             if (areChannelsChanged) {
-                this.backendService.setChannels(fileId, channel, stokes, {fileId, compressionQuality, compressionType: CARTA.CompressionType.ZFP, tiles: sortedRequests});
+                this.backendService.setChannels(fileId, channel, stokes, {fileId, compressionQuality, compressionType: CARTA.CompressionType.ZFP, tiles: sortedRequests}, undefined, undefined, undefined, extraAxisIndices);
             } else {
                 this.backendService.addRequiredTiles(fileId, sortedRequests, compressionQuality);
             }
@@ -395,12 +401,22 @@ export class TileService {
         this.backendService.setChannels(fileId, channel, stokes, {}, true);
     }
 
-    updateHiddenFileChannels(fileId: number, channel: number, stokes: number) {
+    updateHiddenFileChannels(fileId: number, channel: number, stokes: number, extraAxisIndices?: number[]) {
         this.clearCompressedCache(fileId);
         this.clearGPUCache(fileId);
 
-        this.channelMap.set(fileId, {channel, stokes});
-        this.backendService.setChannels(fileId, channel, stokes, {});
+        this.channelMap.set(fileId, {channel, stokes, extraAxisIndices});
+        this.backendService.setChannels(fileId, channel, stokes, {}, undefined, undefined, undefined, extraAxisIndices);
+    }
+
+    private static sameExtraAxisIndices(a: number[] | undefined, b: number[] | undefined): boolean {
+        if (!a?.length && !b?.length) {
+            return true;
+        }
+        if (!a || !b || a.length !== b.length) {
+            return false;
+        }
+        return a.every((value, index) => value === b[index]);
     }
 
     clearGPUCache(fileId: number | null | undefined) {
@@ -589,6 +605,11 @@ export class TileService {
         // Ignore stale tiles that don't match the currently required tiles. During animation, ignore changes to channel
         if (!appStore.channelMapStore.isChannelMapEnabled && !this.isAnimationEnabled && (!currentChannels || currentChannels.channel !== tileMessage.channel || currentChannels.stokes !== tileMessage.stokes)) {
             console.log(`Ignoring stale tile for channel=${tileMessage.channel} (Current channel=${currentChannels ? currentChannels.channel : undefined})`);
+            return;
+        }
+        // Likewise for tiles rendered at a previous index of an extra (pinned) axis
+        if (!this.isAnimationEnabled && currentChannels?.extraAxisIndices?.length && tileMessage.extraAxisIndices?.length && !TileService.sameExtraAxisIndices(currentChannels.extraAxisIndices, tileMessage.extraAxisIndices)) {
+            console.log(`Ignoring stale tile for extra axis indices=${tileMessage.extraAxisIndices}`);
             return;
         }
 
