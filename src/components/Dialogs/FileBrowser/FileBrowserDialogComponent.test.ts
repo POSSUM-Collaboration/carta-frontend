@@ -10,7 +10,7 @@ interface TestableFileBrowserDialogComponent {
     imageArithmeticString: string;
     loadSelectedFiles: jest.Mock<Promise<FrameStore[]>>;
     loadAsTimeSeries: () => Promise<void>;
-    loadFile: (file: ISelectedFile) => Promise<FrameStore | undefined>;
+    loadFile: (file: ISelectedFile, shouldForceAppend?: boolean) => Promise<FrameStore | undefined>;
     loadExpression: () => Promise<FrameStore>;
     loadComplexImage: (filename: string, expression: string) => Promise<FrameStore>;
     handleSaveFile: (shouldOverwrite?: boolean) => Promise<void>;
@@ -68,7 +68,23 @@ describe("FileBrowserDialogComponent", () => {
             fileBrowserStore.isAppendingFrame = isAppendingFrame;
             await component.loadFile({fileInfo: {name: "image.fits"}, hdu: "0"});
 
-            expect(isAppendingFrame ? appStore.appendFile : appStore.openFile).toHaveBeenCalledWith("", "image.fits", "0");
+            if (isAppendingFrame) {
+                expect(appStore.appendFile).toHaveBeenCalledWith("", "image.fits", "0", false, true, true, undefined);
+            } else {
+                expect(appStore.openFile).toHaveBeenCalledWith("", "image.fits", "0", false, true, undefined);
+            }
+        });
+
+        test("opens the selected image with the chosen axis order", async () => {
+            fileBrowserStore.selectedFile = {name: "image.fits"} as CARTA.FileInfo.$Properties;
+            fileBrowserStore.selectedHDU = "0";
+            (fileBrowserStore as any).axisOrder = {isDefault: false, order: [2, 0, 1]};
+            await component.loadFile({fileInfo: {name: "image.fits"}, hdu: "0"});
+            expect(appStore.openFile).toHaveBeenCalledWith("", "image.fits", "0", false, true, [2, 0, 1]);
+
+            // Another file in a multi-file selection keeps its file order
+            await component.loadFile({fileInfo: {name: "other.fits"}, hdu: "0"}, true);
+            expect(appStore.appendFile).toHaveBeenCalledWith("", "other.fits", "0", false, true, true, undefined);
         });
 
         test("loads a catalog", async () => {
