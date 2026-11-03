@@ -68,7 +68,20 @@ describe("FileBrowserDialogComponent", () => {
             fileBrowserStore.isAppendingFrame = isAppendingFrame;
             await component.loadFile({fileInfo: {name: "image.fits"}, hdu: "0"});
 
-            expect(isAppendingFrame ? appStore.appendFile : appStore.openFile).toHaveBeenCalledWith("", "image.fits", "0");
+            if (isAppendingFrame) {
+                expect(appStore.appendFile).toHaveBeenCalledWith("", "image.fits", "0", false, true, true, undefined);
+            } else {
+                expect(appStore.openFile).toHaveBeenCalledWith("", "image.fits", "0", false, true, undefined);
+            }
+        });
+
+        test("opens the selected HEALPix map with its reprojection options", async () => {
+            const toMessage = jest.fn(() => ({projection: "TAN"}));
+            fileBrowserStore.selectedFile = {name: "map.fits"} as CARTA.FileInfo.$Properties;
+            (fileBrowserStore as any).isHealpixFile = true;
+            (fileBrowserStore as any).healpixOptions = {toMessage};
+            await component.loadFile({fileInfo: {name: "map.fits"}, hdu: "1"});
+            expect(appStore.openFile).toHaveBeenCalledWith("", "map.fits", "1", false, true, {projection: "TAN"});
         });
 
         test("loads a catalog", async () => {
