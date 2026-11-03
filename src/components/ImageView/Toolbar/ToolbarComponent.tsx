@@ -208,7 +208,7 @@ export class ToolbarComponent extends React.Component<ToolbarComponentProps> {
                 <MenuItem text={ToolbarComponent.CoordinateSystemName.get(SystemType.ICRS)} onClick={() => this.handleCoordinateSystemClicked(SystemType.ICRS)} />
                 <MenuItem text={ToolbarComponent.CoordinateSystemName.get(SystemType.Image)} onClick={() => this.handleCoordinateSystemClicked(SystemType.Image)} />
                 <FormGroup inline={false} className="offset-group">
-                    <Switch className="offset-switch" disabled={frame.isPVImage || frame.isSwappedZ || frame.isUVImage} checked={frame.isOffsetCoord} onChange={frame.toggleOffsetCoord} label="Offset" />
+                    <Switch className="offset-switch" disabled={!frame.isNormalImage} checked={frame.isOffsetCoord} onChange={frame.toggleOffsetCoord} label="Offset" />
                     <Collapse isOpen={frame.isOffsetCoord}>
                         <OffsetCoordinateControlsComponent
                             className="offset-collapse-content"

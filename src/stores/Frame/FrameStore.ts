@@ -267,7 +267,7 @@ export class FrameStore {
     }
 
     @computed get isAxisZoomable(): boolean {
-        return this.isPVImage || this.isSwappedZ || this.isPreview;
+        return this.isPVImage || this.isSwappedZ || this.isPreview || this.isGenericRenderPlane;
     }
 
     @computed get effectiveZoomLevel(): Point2D {
@@ -307,7 +307,18 @@ export class FrameStore {
     }
 
     @computed get isNormalImage(): boolean {
-        return !this.isPVImage && !this.isUVImage && !this.isSwappedZ;
+        return !this.isPVImage && !this.isUVImage && !this.isSwappedZ && !this.isGenericRenderPlane;
+    }
+
+    /**
+     * Whether the rendered plane is none of the specially handled kinds (sky, position-velocity, spectral vs direction, UV):
+     * any other pair of axes, e.g. time vs declination, Faraday depth vs frequency, or an image with no sky coordinates at all.
+     * Such a plane gets a linear world coordinate system built from its own two axes.
+     */
+    @computed get isGenericRenderPlane(): boolean {
+        const [xNumber, yNumber] = this.renderedAxesNumbers;
+        const isDirectionPair = (xNumber === this.dirXNumber && yNumber === this.dirYNumber) || (xNumber === this.dirYNumber && yNumber === this.dirXNumber);
+        return !isDirectionPair && !this.isPVImage && !this.isSwappedZ && !this.isUVImage;
     }
 
     get hasSquarePixels(): boolean {
@@ -842,12 +853,16 @@ export class FrameStore {
         return this.frameInfo.fileInfoExtended.depth > 1 ? "3" : "2";
     }
 
-    // Get rendered axes numbers from the header
+    // Rendered axes numbers (1-based): the backend renders the first two non-polarization axes of the image
     get renderedAxesNumbers(): [number, number] {
-        let axes = [this.dirXNumber, this.dirYNumber, this.spectralNumber];
-        axes = axes.filter(num => num > 0);
-        axes.sort();
-        if (axes.length > 1) {
+        const numAxes = Math.max(this.frameInfo?.fileInfoExtended?.dimensions ?? 0, 2);
+        const axes: number[] = [];
+        for (let axisNumber = 1; axisNumber <= numAxes && axes.length < 2; axisNumber++) {
+            if (axisNumber !== this.stokesNumber) {
+                axes.push(axisNumber);
+            }
+        }
+        if (axes.length === 2) {
             return [axes[0], axes[1]];
         }
         console.log(`Undefined rendered axes! Using default axes [1, 2]`);
@@ -1539,6 +1554,15 @@ export class FrameStore {
                 this.updateSpectralVsDirectionWcs();
                 AST.deleteObject(astFrameSet);
             }
+        } else if (this.isGenericRenderPlane) {
+            // Any other pair of axes: a linear world coordinate system from the two rendered axes alone
+            overlaySettings.global.setValidWcs(false);
+            const astFrameSet = this.initRenderAxesFrame2D();
+            if (astFrameSet) {
+                this.wcsInfo = AST.copy(astFrameSet);
+                this.wcsInfoForTransformation = AST.copy(astFrameSet);
+                AST.deleteObject(astFrameSet);
+            }
         } else if (this.isUVImage) {
             // TODO: Refactor the code to avoid redundancy between astFrameSet and astFrameSet2D
             const astFrameSet = this.initFrame(false);
@@ -2153,6 +2177,57 @@ export class FrameStore {
         } finally {
             AST.deleteObject(fitsChan);
         }
+    };
+
+    /**
+     * Builds a 2D frame set for a rendered plane that is not a sky, PV, spectral-vs-direction or UV plane. Each rendered axis
+     * is described by its own CTYPE/CRVAL/CDELT/CRPIX/CUNIT (renumbered to axes 1 and 2, with the PC terms between them), so
+     * that AST reports world values and units along e.g. a time or Faraday depth axis. A celestial axis rendered without its
+     * partner is treated as linear in its own coordinate (exact only where the projection is linear).
+     */
+    private initRenderAxesFrame2D = (): AST.FrameSet | null => {
+        const entries = this.frameInfo.fileInfoExtended.headerEntries;
+        if (!entries?.length) {
+            return null;
+        }
+        const [xNumber, yNumber] = this.renderedAxesNumbers;
+        const fitsChan = AST.emptyFitsChan();
+        const putCard = (name: string, value: string) => AST.putFits(fitsChan, `${name.padEnd(8)}=  ${value}`);
+        const findEntry = (name: string) => entries.find(entry => entry.name === name);
+        const formatValue = (entry: CARTA.HeaderEntry.$Properties) => {
+            const value = trimFitsComment(entry.value);
+            return (entry.entryType ?? CARTA.EntryType.STRING) === CARTA.EntryType.STRING ? `'${value}'` : FrameStore.shiftASTCoords(entry, value);
+        };
+
+        putCard("NAXIS", "2");
+        [xNumber, yNumber].forEach((axisNumber, index) => {
+            const newNumber = index + 1;
+            for (const key of ["NAXIS", "CRVAL", "CDELT", "CRPIX", "CUNIT", "CROTA"]) {
+                const entry = findEntry(`${key}${axisNumber}`);
+                if (entry?.value?.length) {
+                    putCard(`${key}${newNumber}`, formatValue(entry));
+                }
+            }
+            // A lone celestial or spectral axis keeps its name but is read as a linear axis
+            const ctype = trimFitsComment(findEntry(`CTYPE${axisNumber}`)?.value ?? "").trim();
+            const linearType = ctype.replace(/^([A-Z]{2,4})(?:-+[A-Z0-9]+)?$/i, "$1").replace(/-+$/, "");
+            if (linearType) {
+                putCard(`CTYPE${newNumber}`, `'${linearType}'`);
+            }
+            [xNumber, yNumber].forEach((otherNumber, otherIndex) => {
+                const pc = findEntry(`PC${axisNumber}_${otherNumber}`) ?? findEntry(`PC0${axisNumber}_0${otherNumber}`);
+                if (pc?.value?.length) {
+                    putCard(`PC${newNumber}_${otherIndex + 1}`, formatValue(pc));
+                }
+            });
+        });
+
+        const frameSet = AST.getFrameFromFitsChan(fitsChan, false);
+        if (!frameSet) {
+            this.logStore.addWarning(`Could not build a coordinate system for the rendered axes ${xNumber} and ${yNumber} of ${this.filename}`, ["ast"]);
+            return null;
+        }
+        return frameSet;
     };
 
     private initFrame2D = (): AST.FrameSet => {

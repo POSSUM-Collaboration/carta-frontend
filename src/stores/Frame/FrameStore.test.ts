@@ -1436,3 +1436,90 @@ describe("FrameStore extra (pinned) axes", () => {
         expect(frame.requiredExtraAxisIndices[1]).toBe(3);
     });
 });
+
+describe("FrameStore generic render planes (selectable axes)", () => {
+    // The 5D cube [RA, DEC, FREQ, STOKES, TIME] opened with axis order [TIME, DEC, FREQ, RA, STOKES]: x = TIME, y = DEC, channel = FREQ
+    const timeDecFrameInfo = {
+        ...STOKES_CUBEFRAME_INFO,
+        axisOrder: [4, 1, 2, 0, 3],
+        fileInfoExtended: {
+            ...STOKES_CUBEFRAME_INFO.fileInfoExtended,
+            dimensions: 5,
+            width: 5,
+            height: 2,
+            depth: 3,
+            stokes: 2,
+            axesNumbers: {spatialX: 4, spatialY: 2, spectral: 3, stokes: 5, depth: 3},
+            headerEntries: [
+                {name: "CTYPE1", value: "TIME"},
+                {name: "CRVAL1", value: "1.000000000000E+01", entryType: 1, numericValue: 10},
+                {name: "CDELT1", value: "6.000000000000E+02", entryType: 1, numericValue: 600},
+                {name: "CRPIX1", value: "1", entryType: 1, numericValue: 1},
+                {name: "CUNIT1", value: "s"},
+                {name: "CTYPE2", value: "DEC--SIN"},
+                {name: "CRVAL2", value: "1.327891127641E+01", entryType: 1, numericValue: 13.27891127641},
+                {name: "CDELT2", value: "5.000000000000E-05", entryType: 1, numericValue: 0.00005},
+                {name: "CRPIX2", value: "2", entryType: 1, numericValue: 2},
+                {name: "CUNIT2", value: "deg"},
+                {name: "PC1_1", value: "1.000000000000E+00", entryType: 1, numericValue: 1},
+                {name: "PC2_2", value: "1.000000000000E+00", entryType: 1, numericValue: 1},
+                {name: "PC2_4", value: "0.000000000000E+00", entryType: 1, numericValue: 0},
+                {name: "CTYPE3", value: "FREQ"},
+                {name: "CRVAL3", value: "3.440912937187E+11", entryType: 1, numericValue: 344091293718.7},
+                {name: "CDELT3", value: "3.906722973755E+06", entryType: 1, numericValue: 3906722.973755},
+                {name: "CRPIX3", value: "1", entryType: 1, numericValue: 1},
+                {name: "CUNIT3", value: "Hz"},
+                {name: "CTYPE4", value: "RA---SIN"},
+                {name: "CRVAL4", value: "1.469895377994E+02", entryType: 1, numericValue: 146.9895377994},
+                {name: "CDELT4", value: "-5.000000000000E-05", entryType: 1, numericValue: -0.00005},
+                {name: "CRPIX4", value: "-2", entryType: 1, numericValue: -2},
+                {name: "CUNIT4", value: "deg"},
+                {name: "CTYPE5", value: "STOKES"},
+                {name: "CRVAL5", value: "1.000000000000E+00", entryType: 1, numericValue: 1},
+                {name: "CDELT5", value: "1.000000000000E+00", entryType: 1, numericValue: 1},
+                {name: "CRPIX5", value: "1", entryType: 1, numericValue: 1}
+            ]
+        }
+    } as FrameInfo;
+
+    beforeEach(() => {
+        (AST.putFits as jest.Mock).mockClear();
+        (AST.getFrameFromFitsChan as jest.Mock).mockClear();
+    });
+
+    test("the rendered axes are the first two non-polarization axes", () => {
+        expect(new FrameStore(STOKES_CUBEFRAME_INFO).renderedAxesNumbers).toEqual([1, 2]);
+        const leadingStokes = {...STOKES_CUBEFRAME_INFO, fileInfoExtended: {...STOKES_CUBEFRAME_INFO.fileInfoExtended, axesNumbers: {spatialX: 2, spatialY: 3, spectral: 4, stokes: 1, depth: 4}}} as FrameInfo;
+        expect(new FrameStore(leadingStokes).renderedAxesNumbers).toEqual([2, 3]);
+        expect(new FrameStore(timeDecFrameInfo).renderedAxesNumbers).toEqual([1, 2]);
+    });
+
+    test("a sky image is a normal image, a time vs declination plane is a generic one", () => {
+        const sky = new FrameStore(STOKES_CUBEFRAME_INFO);
+        expect(sky.isGenericRenderPlane).toBe(false);
+        expect(sky.isNormalImage).toBe(true);
+
+        const frame = new FrameStore(timeDecFrameInfo);
+        expect(frame.isGenericRenderPlane).toBe(true);
+        expect(frame.isNormalImage).toBe(false);
+        expect(frame.isSwappedZ).toBe(false);
+        expect(frame.isPVImage).toBe(false);
+        expect(frame.isAxisZoomable).toBe(true);
+        expect(frame.frameInfo.axisOrder).toEqual([4, 1, 2, 0, 3]);
+    });
+
+    test("the generic plane's coordinate system is built from its own two axes, renumbered and linear", () => {
+        new FrameStore(timeDecFrameInfo);
+        const cards = (AST.putFits as jest.Mock).mock.calls.map(call => (call[1] as string).replace(/\s+/g, " ").trim());
+        expect(cards).toContain("NAXIS = 2");
+        expect(cards).toContain("CTYPE1 = 'TIME'");
+        expect(cards).toContain("CUNIT1 = 's'");
+        expect(cards).toContain("CRPIX1 = 0"); // shifted to 0-based image coordinates
+        expect(cards).toContain("CTYPE2 = 'DEC'"); // a lone celestial axis is read as linear
+        expect(cards).toContain("CRVAL2 = 1.327891127641E+01");
+        expect(cards).toContain("PC1_1 = 1.000000000000E+00");
+        expect(cards).toContain("PC2_2 = 1.000000000000E+00");
+        expect(cards.some(card => card.startsWith("CTYPE3") || card.startsWith("PC2_4") || card.startsWith("CTYPE4"))).toBe(false);
+        expect(AST.getFrameFromFitsChan).toHaveBeenCalledWith(expect.anything(), false);
+    });
+});
