@@ -7,6 +7,7 @@ import {action, computed, flow, flowResult, makeObservable, observable, runInAct
 import {observer} from "mobx-react";
 
 import {DraggableDialogComponent, TaskProgressDialogComponent} from "components/Dialogs";
+import {AxisOrderComponent} from "components/Dialogs/FileBrowser/AxisOrder/AxisOrderComponent";
 import {FileInfoComponent} from "components/FileInfo/FileInfoComponent";
 import {AppToaster, ErrorToast, type SimpleTableComponentProps} from "components/Shared";
 import {AnimationMode, BrowserMode, ColormapSet, DialogId, FileFilteringType, FileInfoType, HelpType, ImageType, PreferenceKeys} from "enums";
@@ -216,10 +217,13 @@ export class FileBrowserDialogComponent extends React.Component {
                 throw new Error("No directory selected");
             }
 
+            // Axis choice applies to the file whose info is shown (and its selected HDU)
+            const isSelectedFile = file.fileInfo.name === fileBrowserStore.selectedFile?.name && (!file.hdu || file.hdu === fileBrowserStore.selectedHDU);
+            const axisOrder = isSelectedFile && !fileBrowserStore.axisOrder.isDefault ? fileBrowserStore.axisOrder.order.slice() : undefined;
             if (!(shouldForceAppend || fileBrowserStore.isAppendingFrame) || !frames.length) {
-                frame = yield appStore.openFile(directory, file.fileInfo.name, file.hdu);
+                frame = yield appStore.openFile(directory, file.fileInfo.name, file.hdu, false, true, axisOrder);
             } else {
-                frame = yield appStore.appendFile(directory, file.fileInfo.name, file.hdu);
+                frame = yield appStore.appendFile(directory, file.fileInfo.name, file.hdu, false, true, true, axisOrder);
             }
         } else if (fileBrowserStore.browserMode === BrowserMode.Catalog) {
             const directory = fileBrowserStore.catalogFileList?.directory;
@@ -1002,6 +1006,7 @@ export class FileBrowserDialogComponent extends React.Component {
                             />
                         </div>
                         <div className="file-info-pane">
+                            {fileBrowserStore.browserMode === BrowserMode.File && <AxisOrderComponent />}
                             <FileInfoComponent
                                 infoTypes={FileBrowserDialogComponent.getFileInfoTypes(fileBrowserStore.browserMode)}
                                 HDUOptions={{HDUList: fileBrowserStore.HDUList || [], handleSelectedHDUChange: fileBrowserStore.selectHDU}}

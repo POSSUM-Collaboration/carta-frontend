@@ -1,0 +1,38 @@
+@import "~@blueprintjs/core/lib/scss/variables.scss";
+
+.axis-order {
+    margin-bottom: 8px;
+    border: 1px solid rgba(138, 155, 168, 0.3);
+    border-radius: 3px;
+
+    .axis-order-header {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        padding: 2px 4px;
+
+        .axis-order-title {
+            flex: 1 1 auto;
+            font-weight: 600;
+        }
+    }
+
+    .axis-order-body {
+        padding: 4px 8px;
+
+        .#{$ns}-form-group.#{$ns}-inline {
+            margin-bottom: 6px;
+
+            label.#{$ns}-label {
+                width: 100px;
+            }
+
+            .#{$ns}-form-content {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 4px;
+            }
+        }
+    }
+}

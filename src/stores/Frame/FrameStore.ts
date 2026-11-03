@@ -105,6 +105,8 @@ export interface FrameInfo {
     renderMode: CARTA.RenderMode;
     beamTable: CARTA.Beam.$Properties[];
     generated: boolean;
+    /** Permutation the image was opened with (image axis i = file axis axisOrder[i], 0-based); undefined = file order */
+    axisOrder?: number[];
     preview?: boolean;
     previewSourceFileId?: number;
 }

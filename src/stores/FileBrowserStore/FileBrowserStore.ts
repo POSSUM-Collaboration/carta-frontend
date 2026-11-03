@@ -7,6 +7,7 @@ import {BrowserMode, DialogId, FileFilterMode, FileInfoType, FrequencyUnit, Imag
 import {FileCtypeInfo, Freq, type LineOption, STANDARD_POLARIZATIONS, ToFileListFilterMode} from "models";
 import {BackendService} from "services";
 import {AppStore, DialogStore, PreferenceStore} from "stores";
+import {AxisOrderStore} from "stores/FileBrowserStore/AxisOrderStore";
 import {RegionStore} from "stores/Frame";
 import {getDataTypeString, getHeaderNumericValue, type ProcessedColumnData} from "utilities";
 
@@ -47,6 +48,10 @@ export class FileBrowserStore {
     @observable selectedFile: CARTA.FileInfo.$Properties | CARTA.CatalogFileInfo.$Properties | null | undefined = undefined;
     @observable selectedHDU: string | null = null;
     @observable HDUfileInfoExtended: {[k: string]: CARTA.FileInfoExtended.$Properties} | null = null;
+    /** Choice of render (X, Y) and animation (Z) axes for the selected image, sent to the backend as an axis order */
+    readonly axisOrder = new AxisOrderStore();
+    /** File info of every HDU in the file's own axis order, kept while the selected HDU is shown with permuted axes */
+    private fileOrderInfoExtended: {[k: string]: CARTA.FileInfoExtended.$Properties} | null = null;
     @observable regionFileInfo: string[] | null = null;
     @observable selectedTab: TabId = FileInfoType.IMAGE_FILE;
     @observable isLoadingList: boolean = false;
@@ -274,10 +279,12 @@ export class FileBrowserStore {
             const res = yield backendService.getFileInfo(directory, file, hdu);
             if (res.fileInfo && this.selectedFile && res.fileInfo.name === this.selectedFile.name) {
                 this.HDUfileInfoExtended = res.fileInfoExtended;
+                this.fileOrderInfoExtended = res.fileInfoExtended ? {...res.fileInfoExtended} : null;
                 const HDUList = Object.keys(this.HDUfileInfoExtended ?? {});
                 if (HDUList?.length >= 1) {
                     this.selectedHDU = HDUList[0];
                 }
+                this.axisOrder.setFileAxes(this.fileInfoExtended?.axes);
                 this.updateFileInfoInFileList(res.fileInfo);
                 this.isLoadingInfo = false;
             }
@@ -287,6 +294,62 @@ export class FileBrowserStore {
             this.responseErrorMessage = err;
             this.isFileInfoResp = false;
             this.HDUfileInfoExtended = null;
+            this.fileOrderInfoExtended = null;
+            this.axisOrder.setFileAxes([]);
+            this.isLoadingInfo = false;
+        }
+    }
+
+    /**
+     * Assigns a file axis to X, Y or Z for the selected image and refreshes its file info, which the backend then
+     * describes in the permuted order (headers renumbered, shape and axis roles as the image would be opened).
+     */
+    @flow.bound
+    *setRenderAxis(role: "x" | "y" | "z", fileAxis: number) {
+        this.axisOrder.setRenderAxis(role, fileAxis);
+        yield this.refreshAxisOrderInfo();
+    }
+
+    @flow.bound
+    *resetAxisOrder() {
+        this.axisOrder.reset();
+        yield this.refreshAxisOrderInfo();
+    }
+
+    @flow.bound
+    private *refreshAxisOrderInfo() {
+        const hdu = this.selectedHDU;
+        const file = this.selectedFile?.name;
+        if (hdu === null || !file || !this.HDUfileInfoExtended) {
+            return;
+        }
+
+        if (this.axisOrder.isDefault) {
+            // Back to the file's own order: restore the info received without a permutation
+            if (this.fileOrderInfoExtended?.[hdu]) {
+                this.HDUfileInfoExtended = {...this.HDUfileInfoExtended, [hdu]: this.fileOrderInfoExtended[hdu]};
+            }
+            return;
+        }
+
+        const order = this.axisOrder.order.slice();
+        this.isLoadingInfo = true;
+        this.responseErrorMessage = "";
+        try {
+            const res = yield BackendService.Instance.getFileInfo(this.getfileListByMode?.directory, file, hdu, order);
+            const info = Object.values(res.fileInfoExtended ?? {})[0] as CARTA.FileInfoExtended.$Properties | undefined;
+            // Apply only if the selection has not moved on meanwhile
+            if (info && this.selectedFile?.name === file && this.selectedHDU === hdu && this.HDUfileInfoExtended && this.axisOrder.order.join() === order.join()) {
+                this.HDUfileInfoExtended = {...this.HDUfileInfoExtended, [hdu]: info};
+            }
+        } catch (err) {
+            console.error(err);
+            this.responseErrorMessage = err;
+            this.axisOrder.reset();
+            if (this.fileOrderInfoExtended?.[hdu] && this.HDUfileInfoExtended) {
+                this.HDUfileInfoExtended = {...this.HDUfileInfoExtended, [hdu]: this.fileOrderInfoExtended[hdu]};
+            }
+        } finally {
             this.isLoadingInfo = false;
         }
     }
@@ -457,6 +520,9 @@ export class FileBrowserStore {
     @action selectFile = (file: ISelectedFile) => {
         const fileList = this.getfileListByMode;
         this.selectedFile = file.fileInfo;
+        // The axis choice belongs to one file
+        this.axisOrder.setFileAxes([]);
+        this.fileOrderInfoExtended = null;
 
         if (file.hdu) {
             this.selectedHDU = file.hdu;
@@ -502,7 +568,12 @@ export class FileBrowserStore {
 
     @action selectHDU = (hdu: string) => {
         if (hdu in (this.HDUfileInfoExtended ?? {})) {
+            if (!this.axisOrder.isDefault && this.selectedHDU !== null && this.fileOrderInfoExtended?.[this.selectedHDU] && this.HDUfileInfoExtended) {
+                // Leave the previous HDU in its file order; each HDU has its own axes
+                this.HDUfileInfoExtended = {...this.HDUfileInfoExtended, [this.selectedHDU]: this.fileOrderInfoExtended[this.selectedHDU]};
+            }
             this.selectedHDU = hdu;
+            this.axisOrder.setFileAxes(this.fileOrderInfoExtended?.[hdu]?.axes);
         }
     };
 

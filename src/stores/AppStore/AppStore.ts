@@ -624,7 +624,16 @@ export class AppStore {
      * @param shouldUpdateStartingDirectory - Whether to update the starting directory in the file browser. Required for carta-python.
      * @returns Whether the frame was successfully added.
      */
-    @action addFrame = (ack: CARTA.OpenFileAck.$Properties, directory: string, isLelExpr: boolean, hdu: string, isGenerated: boolean = false, shouldSetAsActive: boolean = true, shouldUpdateStartingDirectory: boolean = true): boolean => {
+    @action addFrame = (
+        ack: CARTA.OpenFileAck.$Properties,
+        directory: string,
+        isLelExpr: boolean,
+        hdu: string,
+        isGenerated: boolean = false,
+        shouldSetAsActive: boolean = true,
+        shouldUpdateStartingDirectory: boolean = true,
+        axisOrder?: number[]
+    ): boolean => {
         if (!ack) {
             return false;
         }
@@ -647,7 +656,8 @@ export class AppStore {
             fileFeatureFlags: ack.fileFeatureFlags ?? 0,
             renderMode: CARTA.RenderMode.RASTER,
             beamTable: ack.beamTable ?? [],
-            generated: isGenerated
+            generated: isGenerated,
+            axisOrder: axisOrder?.length ? axisOrder.slice() : undefined
         };
         this.telemetryService.addFileOpenEntry(
             ack.fileId ?? -1,
@@ -758,12 +768,13 @@ export class AppStore {
      * @param isImageArithmetic - Whether to treat the file as an image arithmetic (CASA lattice expression) string.
      * @param shouldSetAsActive - Whether the loaded frame should be set as the active frame.
      * @param shouldUpdateStartingDirectory - Whether to update the starting directory in the file browser. Required for carta-python.
+     * @param axisOrder - Optional permutation of the file's axes (image axis i = file axis axisOrder[i], 0-based) to open the image with; the first two are rendered and the third is animated.
      * @returns The added frame.
      *
      * @throws If there is an error loading the file.
      */
     @flow.bound
-    *loadFile(path: string, filename: string, hdu: string, isImageArithmetic: boolean, shouldSetAsActive: boolean = true, shouldUpdateStartingDirectory: boolean = true) {
+    *loadFile(path: string, filename: string, hdu: string, isImageArithmetic: boolean, shouldSetAsActive: boolean = true, shouldUpdateStartingDirectory: boolean = true, axisOrder?: number[]) {
         this.startFileLoading();
 
         if (isImageArithmetic) {
@@ -786,9 +797,9 @@ export class AppStore {
         }
 
         try {
-            const ack = yield this.backendService.loadFile(path, filename, hdu, this.fileCounter, isImageArithmetic);
+            const ack = yield this.backendService.loadFile(path, filename, hdu, this.fileCounter, isImageArithmetic, axisOrder);
             this.fileCounter++;
-            if (!this.addFrame(ack, path, isImageArithmetic, hdu, false, shouldSetAsActive, shouldUpdateStartingDirectory)) {
+            if (!this.addFrame(ack, path, isImageArithmetic, hdu, false, shouldSetAsActive, shouldUpdateStartingDirectory, axisOrder)) {
                 AppToaster.show({icon: "warning-sign", message: "Load file failed.", intent: "danger", timeout: 3000});
             }
             this.endFileLoading();
@@ -879,6 +890,7 @@ export class AppStore {
      * @param isImageArithmetic - Whether to treat the filename as an image arithmetic (CASA lattice expression) string.
      * @param shouldSetAsActive - Whether to set the appended file as the active frame.
      * @param shouldUpdateStartingDirectory - Whether to update the starting directory in the file browser. Required for carta-python.
+     * @param axisOrder - Optional permutation of the file's axes to open the image with (see {@link loadFile}).
      * @returns A promise that resolves to the FrameStore of the opened file.
      *
      * @example
@@ -886,10 +898,10 @@ export class AppStore {
      * const file = await appendFile("/path/to/directory", "example.fits");
      */
     @flow.bound
-    *appendFile(path: string, filename?: string, hdu?: string, isImageArithmetic: boolean = false, shouldSetAsActive: boolean = true, shouldUpdateStartingDirectory: boolean = true) {
+    *appendFile(path: string, filename?: string, hdu?: string, isImageArithmetic: boolean = false, shouldSetAsActive: boolean = true, shouldUpdateStartingDirectory: boolean = true, axisOrder?: number[]) {
         // Stop animations playing before loading a new frame
         this.animatorStore.stopAnimation();
-        return yield this.loadFile(path, filename ?? "", hdu ?? "", isImageArithmetic, shouldSetAsActive, shouldUpdateStartingDirectory);
+        return yield this.loadFile(path, filename ?? "", hdu ?? "", isImageArithmetic, shouldSetAsActive, shouldUpdateStartingDirectory, axisOrder);
     }
 
     /**
@@ -900,6 +912,7 @@ export class AppStore {
      * @param hdu - The Header Data Unit (HDU) to open. If left blank, the first image HDU will be opened.
      * @param isImageArithmetic - Whether to treat the filename as an image arithmetic (CASA lattice expression) string.
      * @param shouldUpdateStartingDirectory - Whether to update the starting directory in the file browser. Required for carta-python.
+     * @param axisOrder - Optional permutation of the file's axes to open the image with (see {@link loadFile}).
      * @returns A promise that resolves to the FrameStore of the opened file.
      *
      * @example
@@ -907,10 +920,10 @@ export class AppStore {
      * const openedFile = await openFile("/path/to/directory", "example.fits");
      */
     @flow.bound
-    *openFile(path: string, filename?: string, hdu?: string, isImageArithmetic?: boolean, shouldUpdateStartingDirectory: boolean = true) {
+    *openFile(path: string, filename?: string, hdu?: string, isImageArithmetic?: boolean, shouldUpdateStartingDirectory: boolean = true, axisOrder?: number[]) {
         this.removeAllFrames();
         this.overlaySettings.global.setSystem(SystemType.Auto);
-        return yield this.loadFile(path, filename ?? "", hdu ?? "", isImageArithmetic ?? false, true, shouldUpdateStartingDirectory);
+        return yield this.loadFile(path, filename ?? "", hdu ?? "", isImageArithmetic ?? false, true, shouldUpdateStartingDirectory, axisOrder);
     }
 
     @flow.bound

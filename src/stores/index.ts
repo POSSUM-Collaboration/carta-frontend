@@ -11,6 +11,7 @@ export * from "./ChannelMapStore/ChannelMapStore";
 export * from "./ColorBlendingStore/ColorBlendingStore";
 export * from "./DialogStore/DialogStore";
 export * from "./DynamicLayoutStore/DynamicLayoutStore";
+export * from "./FileBrowserStore/AxisOrderStore";
 export * from "./FileBrowserStore/FileBrowserStore";
 export * from "./Frame";
 export * from "./HelpStore/HelpStore";

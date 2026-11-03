@@ -297,12 +297,16 @@ export class BackendService {
         }
     }
 
-    async getFileInfo(directory: string | null | undefined, file: string | null | undefined, hdu: string | undefined): Promise<CARTA.FileInfoResponse.$Properties> {
+    /**
+     * Requests the file info of an image. An axis order (image axis i = file axis axisOrder[i], 0-based) makes the backend
+     * describe the image with its axes permuted, as it would be opened with the same order.
+     */
+    async getFileInfo(directory: string | null | undefined, file: string | null | undefined, hdu: string | undefined, axisOrder?: number[]): Promise<CARTA.FileInfoResponse.$Properties> {
         if (this.connectionStatus !== ConnectionStatus.ACTIVE) {
             throw new Error("Not connected");
         } else {
             const hasAipsBeamSupport = AppStore.Instance.preferenceStore.hasAipsBeamSupport;
-            const message = CARTA.FileInfoRequest.create({directory, file, hdu, supportAipsBeam: hasAipsBeamSupport});
+            const message = CARTA.FileInfoRequest.create({directory, file, hdu, supportAipsBeam: hasAipsBeamSupport, axisOrder: axisOrder ?? []});
             const requestId = this.eventCounter;
             this.logEvent(CARTA.EventType.FILE_INFO_REQUEST, requestId, message, false);
             if (this.sendEvent(CARTA.EventType.FILE_INFO_REQUEST, CARTA.FileInfoRequest.encode(message).finish())) {
@@ -391,7 +395,7 @@ export class BackendService {
         }
     }
 
-    async loadFile(directory: string, file: string, hdu: string, fileId: number, isImageArithmetic: boolean): Promise<CARTA.OpenFileAck.$Properties> {
+    async loadFile(directory: string, file: string, hdu: string, fileId: number, isImageArithmetic: boolean, axisOrder?: number[]): Promise<CARTA.OpenFileAck.$Properties> {
         if (this.connectionStatus !== ConnectionStatus.ACTIVE) {
             throw new Error("Not connected");
         } else {
@@ -402,7 +406,8 @@ export class BackendService {
                 fileId,
                 lelExpr: isImageArithmetic,
                 renderMode: CARTA.RenderMode.RASTER,
-                supportAipsBeam: AppStore.Instance.preferenceStore.hasAipsBeamSupport
+                supportAipsBeam: AppStore.Instance.preferenceStore.hasAipsBeamSupport,
+                axisOrder: axisOrder ?? []
             });
             const requestId = this.eventCounter;
             this.logEvent(CARTA.EventType.OPEN_FILE, requestId, message, false);
