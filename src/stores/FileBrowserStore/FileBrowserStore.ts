@@ -7,6 +7,7 @@ import {BrowserMode, DialogId, FileFilterMode, FileInfoType, FrequencyUnit, Imag
 import {FileCtypeInfo, Freq, type LineOption, STANDARD_POLARIZATIONS, ToFileListFilterMode} from "models";
 import {BackendService} from "services";
 import {AppStore, DialogStore, PreferenceStore} from "stores";
+import {HealpixOptionsStore} from "stores/FileBrowserStore/HealpixOptionsStore";
 import {RegionStore} from "stores/Frame";
 import {getDataTypeString, getHeaderNumericValue, type ProcessedColumnData} from "utilities";
 
@@ -47,6 +48,8 @@ export class FileBrowserStore {
     @observable selectedFile: CARTA.FileInfo.$Properties | CARTA.CatalogFileInfo.$Properties | null | undefined = undefined;
     @observable selectedHDU: string | null = null;
     @observable HDUfileInfoExtended: {[k: string]: CARTA.FileInfoExtended.$Properties} | null = null;
+    /** Reprojection settings applied when the selected file is a HEALPix map */
+    readonly healpixOptions = new HealpixOptionsStore();
     @observable regionFileInfo: string[] | null = null;
     @observable selectedTab: TabId = FileInfoType.IMAGE_FILE;
     @observable isLoadingList: boolean = false;
@@ -263,7 +266,7 @@ export class FileBrowserStore {
     };
 
     @flow.bound
-    *getFileInfo(directory: string | null | undefined, file: string | null | undefined, hdu: string | undefined) {
+    *getFileInfo(directory: string | null | undefined, file: string | null | undefined, hdu: string | undefined, healpixOptions?: CARTA.HealpixOptions.$Properties) {
         const backendService = BackendService.Instance;
         this.isLoadingInfo = true;
         this.isFileInfoResp = false;
@@ -271,7 +274,7 @@ export class FileBrowserStore {
         this.responseErrorMessage = "";
 
         try {
-            const res = yield backendService.getFileInfo(directory, file, hdu);
+            const res = yield backendService.getFileInfo(directory, file, hdu, healpixOptions);
             if (res.fileInfo && this.selectedFile && res.fileInfo.name === this.selectedFile.name) {
                 this.HDUfileInfoExtended = res.fileInfoExtended;
                 const HDUList = Object.keys(this.HDUfileInfoExtended ?? {});
@@ -454,9 +457,35 @@ export class FileBrowserStore {
         return type;
     };
 
+    /** Whether the selected file (at the selected HDU) is a HEALPix map, from the backend's computed entries */
+    @computed get isHealpixFile(): boolean {
+        return this.browserMode === BrowserMode.File && !!this.fileInfoExtended?.computedEntries?.some(entry => entry.name === "HEALPix NSIDE");
+    }
+
+    /** Data columns of the selected HEALPix map, parsed from the "HEALPix columns" entry ("NAME [unit], ...") */
+    @computed get healpixColumns(): string[] {
+        const entry = this.fileInfoExtended?.computedEntries?.find(e => e.name === "HEALPix columns");
+        if (!entry?.value) {
+            return [];
+        }
+        return entry.value
+            .split(",")
+            .map(column => column.replace(/\[.*\]/, "").trim())
+            .filter(column => column.length > 0);
+    }
+
+    /** Re-request the file info of the selected HEALPix map with the current reprojection settings */
+    refreshHealpixFileInfo = () => {
+        if (this.isHealpixFile && this.selectedFile?.name) {
+            this.getFileInfo(this.getfileListByMode?.directory, this.selectedFile.name, this.selectedHDU ?? undefined, this.healpixOptions.toMessage());
+        }
+    };
+
     @action selectFile = (file: ISelectedFile) => {
         const fileList = this.getfileListByMode;
         this.selectedFile = file.fileInfo;
+        // Reprojection settings belong to one file
+        this.healpixOptions.reset();
 
         if (file.hdu) {
             this.selectedHDU = file.hdu;

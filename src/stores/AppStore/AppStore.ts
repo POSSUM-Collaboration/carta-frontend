@@ -762,7 +762,7 @@ export class AppStore {
      * @throws If there is an error loading the file.
      */
     @flow.bound
-    *loadFile(path: string, filename: string, hdu: string, isImageArithmetic: boolean, shouldSetAsActive: boolean = true, shouldUpdateStartingDirectory: boolean = true) {
+    *loadFile(path: string, filename: string, hdu: string, isImageArithmetic: boolean, shouldSetAsActive: boolean = true, shouldUpdateStartingDirectory: boolean = true, healpixOptions?: CARTA.HealpixOptions.$Properties) {
         this.startFileLoading();
 
         if (isImageArithmetic) {
@@ -785,7 +785,7 @@ export class AppStore {
         }
 
         try {
-            const ack = yield this.backendService.loadFile(path, filename, hdu, this.fileCounter, isImageArithmetic);
+            const ack = yield this.backendService.loadFile(path, filename, hdu, this.fileCounter, isImageArithmetic, healpixOptions);
             this.fileCounter++;
             if (!this.addFrame(ack, path, isImageArithmetic, hdu, false, shouldSetAsActive, shouldUpdateStartingDirectory)) {
                 AppToaster.show({icon: "warning-sign", message: "Load file failed.", intent: "danger", timeout: 3000});
@@ -885,10 +885,10 @@ export class AppStore {
      * const file = await appendFile("/path/to/directory", "example.fits");
      */
     @flow.bound
-    *appendFile(path: string, filename?: string, hdu?: string, isImageArithmetic: boolean = false, shouldSetAsActive: boolean = true, shouldUpdateStartingDirectory: boolean = true) {
+    *appendFile(path: string, filename?: string, hdu?: string, isImageArithmetic: boolean = false, shouldSetAsActive: boolean = true, shouldUpdateStartingDirectory: boolean = true, healpixOptions?: CARTA.HealpixOptions.$Properties) {
         // Stop animations playing before loading a new frame
         this.animatorStore.stopAnimation();
-        return yield this.loadFile(path, filename ?? "", hdu ?? "", isImageArithmetic, shouldSetAsActive, shouldUpdateStartingDirectory);
+        return yield this.loadFile(path, filename ?? "", hdu ?? "", isImageArithmetic, shouldSetAsActive, shouldUpdateStartingDirectory, healpixOptions);
     }
 
     /**
@@ -906,10 +906,10 @@ export class AppStore {
      * const openedFile = await openFile("/path/to/directory", "example.fits");
      */
     @flow.bound
-    *openFile(path: string, filename?: string, hdu?: string, isImageArithmetic?: boolean, shouldUpdateStartingDirectory: boolean = true) {
+    *openFile(path: string, filename?: string, hdu?: string, isImageArithmetic?: boolean, shouldUpdateStartingDirectory: boolean = true, healpixOptions?: CARTA.HealpixOptions.$Properties) {
         this.removeAllFrames();
         this.overlaySettings.global.setSystem(SystemType.Auto);
-        return yield this.loadFile(path, filename ?? "", hdu ?? "", isImageArithmetic ?? false, true, shouldUpdateStartingDirectory);
+        return yield this.loadFile(path, filename ?? "", hdu ?? "", isImageArithmetic ?? false, true, shouldUpdateStartingDirectory, healpixOptions);
     }
 
     @flow.bound
