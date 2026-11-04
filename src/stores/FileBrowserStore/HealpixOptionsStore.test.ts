@@ -19,7 +19,8 @@ describe("HealpixOptionsStore", () => {
             bilinear: false,
             columns: [],
             matchImage: false,
-            matchFileId: -1
+            matchFileId: -1,
+            extendSky: false
         });
     });
 
@@ -57,8 +58,11 @@ describe("HealpixOptionsStore", () => {
         store.setMatchImage(true);
         expect(store.toMessage().matchImage).toBe(false);
         store.setMatchImage(true, 3);
-        expect(store.toMessage()).toMatchObject({matchImage: true, matchFileId: 3});
+        expect(store.toMessage()).toMatchObject({matchImage: true, matchFileId: 3, extendSky: true});
+        store.setExtendSky(false);
+        expect(store.toMessage().extendSky).toBe(false);
         store.reset();
+        expect(store.shouldExtendSky).toBe(true);
         expect(store.isDefault).toBe(true);
     });
 

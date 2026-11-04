@@ -44,6 +44,8 @@ export class HealpixOptionsStore {
     @observable columns: string[] = [];
     @observable shouldMatchImage: boolean = false;
     @observable matchFileId: number = -1;
+    /** When matching: extend the grid around the image (same WCS and pixel scale) so zooming out shows the map around it. */
+    @observable shouldExtendSky: boolean = true;
 
     constructor() {
         makeObservable(this);
@@ -71,6 +73,7 @@ export class HealpixOptionsStore {
         this.columns = [];
         this.shouldMatchImage = false;
         this.matchFileId = -1;
+        this.shouldExtendSky = true;
     };
 
     @action setProjection = (projection: string) => {
@@ -125,6 +128,10 @@ export class HealpixOptionsStore {
         this.columns = ordered.length === available.length ? [] : ordered;
     };
 
+    @action setExtendSky = (shouldExtendSky: boolean) => {
+        this.shouldExtendSky = shouldExtendSky;
+    };
+
     @action setMatchImage = (shouldMatchImage: boolean, fileId?: number) => {
         this.shouldMatchImage = shouldMatchImage;
         if (fileId !== undefined) {
@@ -146,7 +153,8 @@ export class HealpixOptionsStore {
             bilinear: this.isBilinear,
             columns: this.columns.slice(),
             matchImage: this.shouldMatchImage && this.matchFileId >= 0,
-            matchFileId: this.matchFileId
+            matchFileId: this.matchFileId,
+            extendSky: this.shouldMatchImage && this.matchFileId >= 0 && this.shouldExtendSky
         };
     };
 }
