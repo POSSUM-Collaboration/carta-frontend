@@ -69,7 +69,7 @@ export class HealpixOptionsComponent extends React.Component {
                 </div>
                 <Collapse isOpen={this.isOpen} keepChildrenMounted={true}>
                     <div className="healpix-options-body">
-                        <FormGroup label="Match to image" inline={true} helperText={isMatching ? "The map is reprojected onto that image's pixel grid and WCS" : undefined}>
+                        <FormGroup label="Match to image" inline={true} helperText={isMatching ? "The map is reprojected onto that image's pixel grid and WCS; a larger size below extends the grid around it" : undefined}>
                             <HTMLSelect value={isMatching ? `${options.matchFileId}` : "-1"} options={matchOptions} onChange={this.handleMatchChanged} disabled={!appStore.frames.length} />
                         </FormGroup>
                         <FormGroup label="Projection" inline={true}>
@@ -114,25 +114,9 @@ export class HealpixOptionsComponent extends React.Component {
                                 rightElement={<span className="healpix-unit">arcmin</span>}
                             />
                         </FormGroup>
-                        <FormGroup label="Size" inline={true} helperText="0 = cover the sky">
-                            <SafeNumericInput
-                                value={options.width}
-                                min={0}
-                                stepSize={64}
-                                intOnly={true}
-                                onValueChange={(width: number) => options.setSize(width, options.height)}
-                                disabled={isMatching}
-                                rightElement={<span className="healpix-unit">× </span>}
-                            />
-                            <SafeNumericInput
-                                value={options.height}
-                                min={0}
-                                stepSize={64}
-                                intOnly={true}
-                                onValueChange={(height: number) => options.setSize(options.width, height)}
-                                disabled={isMatching}
-                                rightElement={<span className="healpix-unit">px</span>}
-                            />
+                        <FormGroup label="Size" inline={true} helperText={isMatching ? "0 = the image's size; larger values keep its WCS and centre it" : "0 = cover the sky"}>
+                            <SafeNumericInput value={options.width} min={0} stepSize={64} intOnly={true} onValueChange={(width: number) => options.setSize(width, options.height)} rightElement={<span className="healpix-unit">× </span>} />
+                            <SafeNumericInput value={options.height} min={0} stepSize={64} intOnly={true} onValueChange={(height: number) => options.setSize(options.width, height)} rightElement={<span className="healpix-unit">px</span>} />
                         </FormGroup>
                         <FormGroup label="Interpolation" inline={true}>
                             <Switch checked={options.isBilinear} onChange={ev => options.setBilinear(ev.currentTarget.checked)} label={options.isBilinear ? "Bilinear" : "Nearest pixel"} />
