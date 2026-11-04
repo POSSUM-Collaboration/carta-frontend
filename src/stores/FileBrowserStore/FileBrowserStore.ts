@@ -8,6 +8,7 @@ import {FileCtypeInfo, Freq, type LineOption, STANDARD_POLARIZATIONS, ToFileList
 import {BackendService} from "services";
 import {AppStore, DialogStore, PreferenceStore} from "stores";
 import {AxisOrderStore} from "stores/FileBrowserStore/AxisOrderStore";
+import {HealpixOptionsStore} from "stores/FileBrowserStore/HealpixOptionsStore";
 import {RegionStore} from "stores/Frame";
 import {getDataTypeString, getHeaderNumericValue, type ProcessedColumnData} from "utilities";
 
@@ -52,6 +53,8 @@ export class FileBrowserStore {
     readonly axisOrder = new AxisOrderStore();
     /** File info of every HDU in the file's own axis order, kept while the selected HDU is shown with permuted axes */
     private fileOrderInfoExtended: {[k: string]: CARTA.FileInfoExtended.$Properties} | null = null;
+    /** Reprojection settings applied when the selected file is a HEALPix map */
+    readonly healpixOptions = new HealpixOptionsStore();
     @observable regionFileInfo: string[] | null = null;
     @observable selectedTab: TabId = FileInfoType.IMAGE_FILE;
     @observable isLoadingList: boolean = false;
@@ -268,7 +271,7 @@ export class FileBrowserStore {
     };
 
     @flow.bound
-    *getFileInfo(directory: string | null | undefined, file: string | null | undefined, hdu: string | undefined) {
+    *getFileInfo(directory: string | null | undefined, file: string | null | undefined, hdu: string | undefined, healpixOptions?: CARTA.HealpixOptions.$Properties) {
         const backendService = BackendService.Instance;
         this.isLoadingInfo = true;
         this.isFileInfoResp = false;
@@ -276,7 +279,7 @@ export class FileBrowserStore {
         this.responseErrorMessage = "";
 
         try {
-            const res = yield backendService.getFileInfo(directory, file, hdu);
+            const res = yield backendService.getFileInfo(directory, file, hdu, undefined, healpixOptions);
             if (res.fileInfo && this.selectedFile && res.fileInfo.name === this.selectedFile.name) {
                 this.HDUfileInfoExtended = res.fileInfoExtended;
                 this.fileOrderInfoExtended = res.fileInfoExtended ? {...res.fileInfoExtended} : null;
@@ -336,7 +339,9 @@ export class FileBrowserStore {
         this.isLoadingInfo = true;
         this.responseErrorMessage = "";
         try {
-            const res = yield BackendService.Instance.getFileInfo(this.getfileListByMode?.directory, file, hdu, order);
+            // A HEALPix map is permuted after reprojection, so its current reprojection settings go along
+            const healpixOptions = this.isHealpixFile ? this.healpixOptions.toMessage() : undefined;
+            const res = yield BackendService.Instance.getFileInfo(this.getfileListByMode?.directory, file, hdu, order, healpixOptions);
             const info = Object.values(res.fileInfoExtended ?? {})[0] as CARTA.FileInfoExtended.$Properties | undefined;
             // Apply only if the selection has not moved on meanwhile
             if (info && this.selectedFile?.name === file && this.selectedHDU === hdu && this.HDUfileInfoExtended && this.axisOrder.order.join() === order.join()) {
@@ -517,12 +522,38 @@ export class FileBrowserStore {
         return type;
     };
 
+    /** Whether the selected file (at the selected HDU) is a HEALPix map, from the backend's computed entries */
+    @computed get isHealpixFile(): boolean {
+        return this.browserMode === BrowserMode.File && !!this.fileInfoExtended?.computedEntries?.some(entry => entry.name === "HEALPix NSIDE");
+    }
+
+    /** Data columns of the selected HEALPix map, parsed from the "HEALPix columns" entry ("NAME [unit], ...") */
+    @computed get healpixColumns(): string[] {
+        const entry = this.fileInfoExtended?.computedEntries?.find(e => e.name === "HEALPix columns");
+        if (!entry?.value) {
+            return [];
+        }
+        return entry.value
+            .split(",")
+            .map(column => column.replace(/\[.*\]/, "").trim())
+            .filter(column => column.length > 0);
+    }
+
+    /** Re-request the file info of the selected HEALPix map with the current reprojection settings */
+    refreshHealpixFileInfo = () => {
+        if (this.isHealpixFile && this.selectedFile?.name) {
+            this.getFileInfo(this.getfileListByMode?.directory, this.selectedFile.name, this.selectedHDU ?? undefined, this.healpixOptions.toMessage());
+        }
+    };
+
     @action selectFile = (file: ISelectedFile) => {
         const fileList = this.getfileListByMode;
         this.selectedFile = file.fileInfo;
         // The axis choice belongs to one file
         this.axisOrder.setFileAxes([]);
         this.fileOrderInfoExtended = null;
+        // Reprojection settings belong to one file
+        this.healpixOptions.reset();
 
         if (file.hdu) {
             this.selectedHDU = file.hdu;

@@ -69,9 +69,9 @@ describe("FileBrowserDialogComponent", () => {
             await component.loadFile({fileInfo: {name: "image.fits"}, hdu: "0"});
 
             if (isAppendingFrame) {
-                expect(appStore.appendFile).toHaveBeenCalledWith("", "image.fits", "0", false, true, true, undefined);
+                expect(appStore.appendFile).toHaveBeenCalledWith("", "image.fits", "0", false, true, true, undefined, undefined);
             } else {
-                expect(appStore.openFile).toHaveBeenCalledWith("", "image.fits", "0", false, true, undefined);
+                expect(appStore.openFile).toHaveBeenCalledWith("", "image.fits", "0", false, true, undefined, undefined);
             }
         });
 
@@ -80,11 +80,20 @@ describe("FileBrowserDialogComponent", () => {
             fileBrowserStore.selectedHDU = "0";
             (fileBrowserStore as any).axisOrder = {isDefault: false, order: [2, 0, 1]};
             await component.loadFile({fileInfo: {name: "image.fits"}, hdu: "0"});
-            expect(appStore.openFile).toHaveBeenCalledWith("", "image.fits", "0", false, true, [2, 0, 1]);
+            expect(appStore.openFile).toHaveBeenCalledWith("", "image.fits", "0", false, true, [2, 0, 1], undefined);
 
             // Another file in a multi-file selection keeps its file order
             await component.loadFile({fileInfo: {name: "other.fits"}, hdu: "0"}, true);
-            expect(appStore.appendFile).toHaveBeenCalledWith("", "other.fits", "0", false, true, true, undefined);
+            expect(appStore.appendFile).toHaveBeenCalledWith("", "other.fits", "0", false, true, true, undefined, undefined);
+        });
+
+        test("opens the selected HEALPix map with its reprojection options", async () => {
+            const toMessage = jest.fn(() => ({projection: "TAN"}));
+            fileBrowserStore.selectedFile = {name: "map.fits"} as CARTA.FileInfo.$Properties;
+            (fileBrowserStore as any).isHealpixFile = true;
+            (fileBrowserStore as any).healpixOptions = {toMessage};
+            await component.loadFile({fileInfo: {name: "map.fits"}, hdu: "1"});
+            expect(appStore.openFile).toHaveBeenCalledWith("", "map.fits", "1", false, true, undefined, {projection: "TAN"});
         });
 
         test("loads a catalog", async () => {

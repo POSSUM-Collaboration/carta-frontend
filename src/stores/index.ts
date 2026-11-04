@@ -13,6 +13,7 @@ export * from "./DialogStore/DialogStore";
 export * from "./DynamicLayoutStore/DynamicLayoutStore";
 export * from "./FileBrowserStore/AxisOrderStore";
 export * from "./FileBrowserStore/FileBrowserStore";
+export * from "./FileBrowserStore/HealpixOptionsStore";
 export * from "./Frame";
 export * from "./HelpStore/HelpStore";
 export * from "./HipsQueryStore/HipsQueryStore";

@@ -4,6 +4,7 @@ export * from "./ContourDialog/ContourDialogComponent";
 export * from "./DraggableDialog/DraggableDialogComponent";
 export * from "./ExternalPageDialog/ExternalPageDialogComponent";
 export * from "./FileBrowser/FileBrowserDialogComponent";
+export * from "./FileBrowser/HealpixOptions/HealpixOptionsComponent";
 export * from "./FileBrowser/ImageSave/ImageSaveComponent";
 export * from "./FileBrowser/RegionSelect/RegionSelectComponent";
 export * from "./FileInfoDialog/FileInfoDialogComponent";

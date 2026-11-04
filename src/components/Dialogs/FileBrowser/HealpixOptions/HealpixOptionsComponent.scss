@@ -1,0 +1,64 @@
+@import "~@blueprintjs/core/lib/scss/variables.scss";
+
+.healpix-options {
+    margin-bottom: 8px;
+    border: 1px solid rgba(138, 155, 168, 0.3);
+    border-radius: 3px;
+
+    .healpix-options-header {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        padding: 2px 4px;
+
+        .healpix-options-title {
+            flex: 1 1 auto;
+            font-weight: 600;
+        }
+    }
+
+    .healpix-options-body {
+        padding: 4px 8px;
+        max-height: 40vh;
+        overflow-y: auto;
+
+        .#{$ns}-form-group.#{$ns}-inline {
+            margin-bottom: 6px;
+
+            label.#{$ns}-label {
+                width: 100px;
+            }
+
+            .#{$ns}-form-content {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 4px;
+            }
+
+            .#{$ns}-numeric-input {
+                width: 140px;
+            }
+
+            .#{$ns}-switch {
+                margin-bottom: 0;
+            }
+        }
+
+        .healpix-unit {
+            padding: 0 6px;
+            font-size: small;
+            color: var(--cl-text-muted, #5c7080);
+            line-height: 30px;
+        }
+
+        .healpix-columns {
+            display: flex;
+            flex-wrap: wrap;
+
+            .#{$ns}-checkbox {
+                margin-bottom: 2px;
+            }
+        }
+    }
+}

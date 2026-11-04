@@ -769,12 +769,22 @@ export class AppStore {
      * @param shouldSetAsActive - Whether the loaded frame should be set as the active frame.
      * @param shouldUpdateStartingDirectory - Whether to update the starting directory in the file browser. Required for carta-python.
      * @param axisOrder - Optional permutation of the file's axes (image axis i = file axis axisOrder[i], 0-based) to open the image with; the first two are rendered and the third is animated.
+     * @param healpixOptions - Optional reprojection settings for a HEALPix map (ignored for other files).
      * @returns The added frame.
      *
      * @throws If there is an error loading the file.
      */
     @flow.bound
-    *loadFile(path: string, filename: string, hdu: string, isImageArithmetic: boolean, shouldSetAsActive: boolean = true, shouldUpdateStartingDirectory: boolean = true, axisOrder?: number[]) {
+    *loadFile(
+        path: string,
+        filename: string,
+        hdu: string,
+        isImageArithmetic: boolean,
+        shouldSetAsActive: boolean = true,
+        shouldUpdateStartingDirectory: boolean = true,
+        axisOrder?: number[],
+        healpixOptions?: CARTA.HealpixOptions.$Properties
+    ) {
         this.startFileLoading();
 
         if (isImageArithmetic) {
@@ -797,7 +807,7 @@ export class AppStore {
         }
 
         try {
-            const ack = yield this.backendService.loadFile(path, filename, hdu, this.fileCounter, isImageArithmetic, axisOrder);
+            const ack = yield this.backendService.loadFile(path, filename, hdu, this.fileCounter, isImageArithmetic, axisOrder, healpixOptions);
             this.fileCounter++;
             if (!this.addFrame(ack, path, isImageArithmetic, hdu, false, shouldSetAsActive, shouldUpdateStartingDirectory, axisOrder)) {
                 AppToaster.show({icon: "warning-sign", message: "Load file failed.", intent: "danger", timeout: 3000});
@@ -891,6 +901,7 @@ export class AppStore {
      * @param shouldSetAsActive - Whether to set the appended file as the active frame.
      * @param shouldUpdateStartingDirectory - Whether to update the starting directory in the file browser. Required for carta-python.
      * @param axisOrder - Optional permutation of the file's axes to open the image with (see {@link loadFile}).
+     * @param healpixOptions - Optional reprojection settings for a HEALPix map (see {@link loadFile}).
      * @returns A promise that resolves to the FrameStore of the opened file.
      *
      * @example
@@ -898,10 +909,19 @@ export class AppStore {
      * const file = await appendFile("/path/to/directory", "example.fits");
      */
     @flow.bound
-    *appendFile(path: string, filename?: string, hdu?: string, isImageArithmetic: boolean = false, shouldSetAsActive: boolean = true, shouldUpdateStartingDirectory: boolean = true, axisOrder?: number[]) {
+    *appendFile(
+        path: string,
+        filename?: string,
+        hdu?: string,
+        isImageArithmetic: boolean = false,
+        shouldSetAsActive: boolean = true,
+        shouldUpdateStartingDirectory: boolean = true,
+        axisOrder?: number[],
+        healpixOptions?: CARTA.HealpixOptions.$Properties
+    ) {
         // Stop animations playing before loading a new frame
         this.animatorStore.stopAnimation();
-        return yield this.loadFile(path, filename ?? "", hdu ?? "", isImageArithmetic, shouldSetAsActive, shouldUpdateStartingDirectory, axisOrder);
+        return yield this.loadFile(path, filename ?? "", hdu ?? "", isImageArithmetic, shouldSetAsActive, shouldUpdateStartingDirectory, axisOrder, healpixOptions);
     }
 
     /**
@@ -913,6 +933,7 @@ export class AppStore {
      * @param isImageArithmetic - Whether to treat the filename as an image arithmetic (CASA lattice expression) string.
      * @param shouldUpdateStartingDirectory - Whether to update the starting directory in the file browser. Required for carta-python.
      * @param axisOrder - Optional permutation of the file's axes to open the image with (see {@link loadFile}).
+     * @param healpixOptions - Optional reprojection settings for a HEALPix map (see {@link loadFile}).
      * @returns A promise that resolves to the FrameStore of the opened file.
      *
      * @example
@@ -920,10 +941,10 @@ export class AppStore {
      * const openedFile = await openFile("/path/to/directory", "example.fits");
      */
     @flow.bound
-    *openFile(path: string, filename?: string, hdu?: string, isImageArithmetic?: boolean, shouldUpdateStartingDirectory: boolean = true, axisOrder?: number[]) {
+    *openFile(path: string, filename?: string, hdu?: string, isImageArithmetic?: boolean, shouldUpdateStartingDirectory: boolean = true, axisOrder?: number[], healpixOptions?: CARTA.HealpixOptions.$Properties) {
         this.removeAllFrames();
         this.overlaySettings.global.setSystem(SystemType.Auto);
-        return yield this.loadFile(path, filename ?? "", hdu ?? "", isImageArithmetic ?? false, true, shouldUpdateStartingDirectory, axisOrder);
+        return yield this.loadFile(path, filename ?? "", hdu ?? "", isImageArithmetic ?? false, true, shouldUpdateStartingDirectory, axisOrder, healpixOptions);
     }
 
     @flow.bound
