@@ -226,6 +226,50 @@ export function getPixelScale(headerEntries: CARTA.HeaderEntry.$Properties[], ax
     return Math.abs(delta) * (unit === "deg" ? 3600 : (180 * 3600) / Math.PI);
 }
 
+/**
+ * Ratio of the pixel sizes along two axes in the projection plane (intermediate world coordinates), from the CDELT
+ * values with any PC matrix, or from the CD matrix: the length of each axis's column of the CD matrix. This is the
+ * aspect ratio a map projection is drawn with (a Mollweide ellipse is 2:1 in its plane), independent of what the
+ * projection does to distances on the sky at the reference point.
+ *
+ * @param headerEntries - FITS header entries
+ * @param axisX - FITS (1-based) number of the horizontal axis
+ * @param axisY - FITS (1-based) number of the vertical axis
+ * @returns The ratio (x size / y size), or NaN when the header does not give both sizes
+ */
+export function getPlanePixelRatio(headerEntries: CARTA.HeaderEntry.$Properties[] | undefined, axisX: number, axisY: number): number {
+    if (!headerEntries || !(axisX > 0) || !(axisY > 0)) {
+        return NaN;
+    }
+    const value = (name: string): number => getHeaderNumericValue(headerEntries.find(entry => entry.name === name));
+    const hasCdMatrix = headerEntries.some(entry => entry.name === `CD${axisX}_${axisX}` || entry.name === `CD${axisY}_${axisY}`);
+
+    let xx: number, yx: number, xy: number, yy: number; // element (world axis, pixel axis) of the CD matrix
+    if (hasCdMatrix) {
+        xx = value(`CD${axisX}_${axisX}`);
+        yx = value(`CD${axisY}_${axisX}`);
+        xy = value(`CD${axisX}_${axisY}`);
+        yy = value(`CD${axisY}_${axisY}`);
+    } else {
+        const cdeltX = value(`CDELT${axisX}`);
+        const cdeltY = value(`CDELT${axisY}`);
+        const pc = (i: number, j: number): number => {
+            const v = value(`PC${i}_${j}`);
+            return isFinite(v) ? v : i === j ? 1 : 0;
+        };
+        xx = cdeltX * pc(axisX, axisX);
+        yx = cdeltY * pc(axisY, axisX);
+        xy = cdeltX * pc(axisX, axisY);
+        yy = cdeltY * pc(axisY, axisY);
+    }
+    const sizeX = Math.hypot(xx, isFinite(yx) ? yx : 0);
+    const sizeY = Math.hypot(yy, isFinite(xy) ? xy : 0);
+    if (!isFinite(sizeX) || !isFinite(sizeY) || sizeX === 0 || sizeY === 0) {
+        return NaN;
+    }
+    return sizeX / sizeY;
+}
+
 export function transformPoint(astTransform: AST.FrameSet | AST.Mapping, point: Point2D, isForward: boolean = true) {
     return AST.transformPoint(astTransform, point.x, point.y, isForward);
 }

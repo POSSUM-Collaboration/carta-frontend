@@ -8,7 +8,7 @@ import {ImageType, SkyRefIs} from "enums";
 import {type ImageItem} from "models";
 import {AppStore, OverlaySettings, type OverlayStore, PreferenceStore} from "stores";
 import {type FrameStore} from "stores/Frame";
-import {setAstSystem} from "utilities";
+import {isAstBadPoint, setAstSystem} from "utilities";
 
 import "./OverlayComponent.scss";
 
@@ -107,6 +107,41 @@ export class OverlayComponent extends React.Component<OverlayComponentProps> {
             axis1: axis1Setting,
             axis2: axis2Setting
         };
+    }
+
+    /**
+     * AST settings pinning each axis label to the edge its axis runs along, for a view that runs past the edge of the sky
+     * (a corner of the view is off the sky, as for an all-sky map). AST cannot label such a view's edges, falls back to
+     * interior labelling, and then picks the edges from the ends of the grid curves, which all meet at the poles of an
+     * all-sky map: it puts the longitude label on the left. Returns an empty string when the whole view is on the sky.
+     */
+    private allSkyEdgeSettings(wcsInfo: AST.FrameSet, frameView: {xMin: number; xMax: number; yMin: number; yMax: number}, frame: FrameStore): string {
+        if (!frame.isValidWcs || OverlaySettings.Instance.isImgCoordinates || frame.dirX < 1 || frame.dirX > 2 || frame.dirY < 1 || frame.dirY > 2) {
+            return "";
+        }
+        const corners = [
+            {x: frameView.xMin, y: frameView.yMin},
+            {x: frameView.xMax, y: frameView.yMin},
+            {x: frameView.xMin, y: frameView.yMax},
+            {x: frameView.xMax, y: frameView.yMax}
+        ];
+        if (!corners.some(corner => isAstBadPoint(AST.transformPoint(wcsInfo, corner.x, corner.y)))) {
+            return "";
+        }
+
+        // How much world axis 1 changes across the middle of the view along x and along y
+        const xc = (frameView.xMin + frameView.xMax) / 2;
+        const yc = (frameView.yMin + frameView.yMax) / 2;
+        const dx = (frameView.xMax - frameView.xMin) / 8;
+        const dy = (frameView.yMax - frameView.yMin) / 8;
+        const alongX = [AST.transformPoint(wcsInfo, xc - dx, yc), AST.transformPoint(wcsInfo, xc + dx, yc)];
+        const alongY = [AST.transformPoint(wcsInfo, xc, yc - dy), AST.transformPoint(wcsInfo, xc, yc + dy)];
+        if ([...alongX, ...alongY].some(point => isAstBadPoint(point))) {
+            return "";
+        }
+        const angleDifference = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+        const isAxis1AlongX = angleDifference(alongX[1].x, alongX[0].x) >= angleDifference(alongY[1].x, alongY[0].x);
+        return isAxis1AlongX ? "Edge(1)=bottom, Edge(2)=left" : "Edge(1)=left, Edge(2)=bottom";
     }
 
     renderCanvas = () => {
@@ -234,6 +269,11 @@ export class OverlayComponent extends React.Component<OverlayComponentProps> {
 
             if (frame.isOffsetCoord) {
                 currentStyleString += `, LabelUnits=1`;
+            }
+
+            const edgeSettings = this.allSkyEdgeSettings(tempWcsInfo, {xMin: frameView.xMin, xMax: frameView.xMax, yMin: frameView.yMin / effectiveAspectRatio, yMax: frameView.yMax / effectiveAspectRatio}, frame);
+            if (edgeSettings) {
+                currentStyleString += `, ${edgeSettings}`;
             }
 
             plot(currentStyleString);

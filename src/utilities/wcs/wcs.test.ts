@@ -1,4 +1,5 @@
 import * as AST from "ast_wrapper";
+import {CARTA} from "carta-protobuf";
 
 import {NumberFormatType, SpectralSystem, SpectralType, SpectralUnit, SystemType} from "../../enums";
 
@@ -34,7 +35,17 @@ jest.mock("stores/Frame", () => ({
     CURSOR_REGION_ID: 0
 }));
 
-import {buildSwappedZWcsSettings, convertFreqMHzToSettingWCS, convertFreqMHzToSettingWCSArray, convertSettingWCSToFreqMHz, convertSettingWCSToFreqMHzArray, convertToNativeWCS, getDefaultWcsFormats, getSwappedDirAxisInfo} from "./wcs";
+import {
+    buildSwappedZWcsSettings,
+    convertFreqMHzToSettingWCS,
+    convertFreqMHzToSettingWCSArray,
+    convertSettingWCSToFreqMHz,
+    convertSettingWCSToFreqMHzArray,
+    convertToNativeWCS,
+    getDefaultWcsFormats,
+    getPlanePixelRatio,
+    getSwappedDirAxisInfo
+} from "./wcs";
 
 describe("spectral WCS conversion helpers", () => {
     beforeEach(() => {
@@ -188,5 +199,36 @@ describe("getDefaultWcsFormats", () => {
     test("follows an explicit degrees or sexagesimal preference for any system", () => {
         expect(getDefaultWcsFormats("degrees", SystemType.ICRS)).toEqual(degrees);
         expect(getDefaultWcsFormats("sexagesimal", SystemType.Galactic)).toEqual(sexagesimal);
+    });
+});
+
+describe("getPlanePixelRatio", () => {
+    const entry = (name: string, numericValue: number) => ({name, value: `${numericValue}`, numericValue, entryType: CARTA.EntryType.FLOAT});
+
+    test("is 1 for equal pixel increments, whatever the projection", () => {
+        // A Mollweide map: pixels square in the projection plane although they cover 1.23 times more sky across than up at the centre
+        const headers = [entry("CDELT1", -0.1145), entry("CDELT2", 0.1145), {name: "CTYPE1", value: "GLON-MOL"}, {name: "CTYPE2", value: "GLAT-MOL"}];
+        expect(getPlanePixelRatio(headers, 1, 2)).toBeCloseTo(1.0, 12);
+    });
+
+    test("follows unequal pixel increments and a PC matrix", () => {
+        expect(getPlanePixelRatio([entry("CDELT1", -0.02), entry("CDELT2", 0.01)], 1, 2)).toBeCloseTo(2.0, 12);
+        // A rotation keeps the sizes; an unequal PC scaling changes them
+        const rotated = [entry("CDELT1", -0.01), entry("CDELT2", 0.01), entry("PC1_1", 0.8), entry("PC1_2", 0.6), entry("PC2_1", -0.6), entry("PC2_2", 0.8)];
+        expect(getPlanePixelRatio(rotated, 1, 2)).toBeCloseTo(1.0, 12);
+        const scaled = [entry("CDELT1", -0.01), entry("CDELT2", 0.01), entry("PC1_1", 3), entry("PC2_2", 1)];
+        expect(getPlanePixelRatio(scaled, 1, 2)).toBeCloseTo(3.0, 12);
+    });
+
+    test("uses the CD matrix columns when there is one", () => {
+        const headers = [entry("CD1_1", -0.003), entry("CD1_2", 0.004), entry("CD2_1", 0.004), entry("CD2_2", 0.003)];
+        expect(getPlanePixelRatio(headers, 1, 2)).toBeCloseTo(1.0, 12);
+        expect(getPlanePixelRatio([entry("CD1_1", -0.002), entry("CD2_2", 0.001)], 1, 2)).toBeCloseTo(2.0, 12);
+    });
+
+    test("is NaN without pixel increments for both axes", () => {
+        expect(getPlanePixelRatio([entry("CDELT1", -0.01)], 1, 2)).toBeNaN();
+        expect(getPlanePixelRatio([], 1, 2)).toBeNaN();
+        expect(getPlanePixelRatio(undefined, 1, 2)).toBeNaN();
     });
 });

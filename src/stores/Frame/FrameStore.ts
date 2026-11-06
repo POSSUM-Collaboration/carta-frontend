@@ -60,6 +60,7 @@ import {
     getHeaderNumericValue,
     getPixelSizes,
     getPixelValueFromWCS,
+    getPlanePixelRatio,
     getRegionPixelProperties,
     getRegionWcsProperties,
     GetRequiredTiles,
@@ -1630,8 +1631,17 @@ export class FrameStore {
         if (hasUnits && !hasSameUnits) {
             this.framePixelRatio = NaN;
         } else {
-            const pixelSize = getPixelSizes(this);
-            this.framePixelRatio = Math.abs(pixelSize.x / pixelSize.y);
+            // The pixel sizes in the projection plane (CDELT with any PC or CD matrix) set the aspect ratio: a map projection is
+            // drawn with its plane's pixels square whatever it does to distances on the sky at the reference point (a Mollweide
+            // ellipse is 2:1 in its plane, but its pixels there span 1.23 times more sky across than up). Without them, measure
+            // distances on the sky around the reference pixel.
+            const planeRatio = getPlanePixelRatio(this.frameInfo.fileInfoExtended.headerEntries, this.renderedAxesNumbers[0], this.renderedAxesNumbers[1]);
+            if (isFinite(planeRatio)) {
+                this.framePixelRatio = planeRatio;
+            } else {
+                const pixelSize = getPixelSizes(this);
+                this.framePixelRatio = Math.abs(pixelSize.x / pixelSize.y);
+            }
             // Correct for numerical errors in CDELT values if they're within 0.1% of each other
             if (Math.abs(this.framePixelRatio - 1.0) < 0.001) {
                 this.framePixelRatio = 1.0;
